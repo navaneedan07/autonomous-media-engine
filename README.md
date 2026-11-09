@@ -5,11 +5,31 @@ Local-first AI-assisted YouTube Shorts / Instagram Reels creator for Windows.
 ## Current pipeline
 - RSS topic discovery and local Ollama script drafting (Gemma 3 4B)
 - English-first 30–45 second scripts with manual approval
-- Expressive neural English narration using Edge TTS (internet required, no paid API key)
+- Fully local Piper neural English narration (no API key; CPU inference)
+
 - **Real vertical stock-video clips from Pexels or Pixabay** when a provider API key is configured
 - Fallback: Wikimedia Commons / publisher still images animated with a slow camera move
 - FFmpeg clip normalization, crossfade transitions, word-timed karaoke captions (ElevenLabs alignment), and loudness mastering
 - 1080 × 1920, 30 FPS MP4 output
+
+## Local voice setup
+
+AME now uses Piper locally instead of ElevenLabs or Edge TTS. No subscription, API key, or internet connection is needed after the voice model is downloaded. The initial default is the US English Ryan high-quality voice.
+
+Run once in PowerShell:
+
+```powershell
+.\\scripts\\setup_tts.ps1
+```
+
+Or manually:
+
+```powershell
+pip install -r requirements.txt
+python -m piper.download_voices --data-dir models/voices en_US-ryan-high
+```
+
+The model is stored under `models/voices/` and is ignored by Git. Adjust `PIPER_LENGTH_SCALE`, `PIPER_NOISE_SCALE`, and `PIPER_NOISE_W_SCALE` in `.env` to tune pacing and variation. Piper is CPU-friendly and offline. It sounds more natural than classic Windows SAPI, but does not have ElevenLabs-style emotion controls; script punctuation and sentence phrasing still matter.
 
 ## Stock video API setup
 
@@ -70,10 +90,10 @@ Set local `.env` values:
 ```env
 OLLAMA_MODEL=gemma3:4b
 CONTENT_LANGUAGE=english
-AME_TTS_VOICE=en-US-ChristopherNeural
-AME_TTS_RATE=+8%
-AME_TTS_PITCH=+2Hz
-AME_TTS_VOLUME=+0%
+PIPER_MODEL_PATH=./models/voices/en_US-ryan-high.onnx
+PIPER_LENGTH_SCALE=0.94
+PIPER_NOISE_SCALE=0.72
+PIPER_NOISE_W_SCALE=0.78
 PEXELS_API_KEY=
 VIDEO_WIDTH=1080
 VIDEO_HEIGHT=1920
