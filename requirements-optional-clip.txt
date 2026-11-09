@@ -1,0 +1,4 @@
+# Optional CPU semantic visual reranking. PyTorch CPU wheels are large.
+# Install only if the machine has several GB of free disk space.
+torch>=2.3,<3
+transformers>=4.44,<5
