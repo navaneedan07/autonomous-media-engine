@@ -73,9 +73,9 @@ def _source_image(article_url: str, work: Path):
         html = httpx.get(article_url, timeout=20, follow_redirects=True,
                          headers={"User-Agent": "Mozilla/5.0 AutonomousMediaEngine"}).text[:2_000_000]
         patterns = [
-            r'<meta[^>]+property=["\\']og:image["\\'][^>]+content=["\\']([^"\\']+)',
-            r'<meta[^>]+content=["\\']([^"\\']+)["\\'][^>]+property=["\\']og:image["\\']',
-            r'<meta[^>]+name=["\\']twitter:image["\\'][^>]+content=["\\']([^"\\']+)',
+            r"""<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)""",
+            r"""<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)""",
+            r"""<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)""",
         ]
         for pattern in patterns:
             match = re.search(pattern, html, re.I)
@@ -204,10 +204,10 @@ def render_approved_video(video_id: int) -> dict:
         seconds = max(2.5, float(row["duration_target_seconds"] or 45) / len(visual_paths))
         for path in visual_paths:
             safe = str(path.resolve()).replace("\\\\", "/").replace("'", "'\\''")
-            manifest.write(f"file '{safe}'\\n")
-            manifest.write(f"duration {seconds:.3f}\\n")
+            manifest.write(f"file '{safe}'\n")
+            manifest.write(f"duration {seconds:.3f}\n")
         safe = str(visual_paths[-1].resolve()).replace("\\\\", "/").replace("'", "'\\''")
-        manifest.write(f"file '{safe}'\\n")
+            manifest.write(f"file '{safe}'\n")
 
     output_path = work / f"ame_video_{video_id}.mp4"
     # Continuous slow zoom gives still photographs motion rather than slide transitions.
