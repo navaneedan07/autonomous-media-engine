@@ -16,7 +16,7 @@ from app.config import (
 )
 from app.db import get_db
 from app.services.tts import synthesize_speech
-from app.services.visual_matching import queries
+from app.services.visual_matching import queries, relevance
 
 import os
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "").strip()
@@ -59,16 +59,17 @@ def _pexels_clip(query: str, destination: Path):
         for video in response.json().get("videos", []):
             page = video.get("url", "")
             description = " ".join([page.rsplit("/", 2)[-2], video.get("user", {}).get("name", "")])
-            for item in video.get("video_files", []):
-                width, height = item.get("width") or 0, item.get("height") or 0
-                link = item.get("link")
-                if link and height >= width and width >= 720:
-                    candidates.append((description, width, height, link, page))
+            files = [item for item in video.get("video_files", [])
+                     if item.get("link") and (item.get("height") or 0) >= (item.get("width") or 0)
+                     and (item.get("width") or 0) >= 720]
+            if files:
+                item = max(files, key=lambda value: (value.get("width") or 0) * (value.get("height") or 0))
+                candidates.append((description, item["width"], item["height"], item["link"], page))
         if not candidates:
             return None
         from app.services.visual_matching import score_video_candidate
         ranked = []
-        for description, width, height, link, page in candidates[:8]:
+        for description, width, height, link, page in candidates[:6]:
             score = score_video_candidate(query, description, width, height, link)
             ranked.append((score, abs(width * height - 1080 * 1920), link, page))
         ranked.sort(key=lambda x: (x[0], -x[1]), reverse=True)
@@ -103,19 +104,27 @@ def _pixabay_clip(query: str, destination: Path):
         from app.services.visual_matching import score_video_candidate
         candidates = []
         for hit in response.json().get("hits", []):
-            for quality in ("large", "medium", "small", "tiny"):
-                item = (hit.get("videos") or {}).get(quality) or {}
-                url = item.get("url")
-                width, height = item.get("width") or 0, item.get("height") or 0
-                if url and width >= 720 and height >= 720:
-                    tags = hit.get("tags", "")
-                    score = score_video_candidate(query, tags, width, height, url)
-                    candidates.append((score, abs(width * height - 1080 * 1920),
-                                       url, hit.get("pageURL", ""), tags))
+            variants = [((hit.get("videos") or {}).get(name) or {})
+                        for name in ("large", "medium", "small", "tiny")]
+            variants = [item for item in variants if item.get("url")
+                        and (item.get("width") or 0) >= 720
+                        and (item.get("height") or 0) >= 720]
+            if not variants:
+                continue
+            item = max(variants, key=lambda value: (value.get("width") or 0) * (value.get("height") or 0))
+            width, height, tags = item["width"], item["height"], hit.get("tags", "")
+            metadata_score = relevance(query, tags, width, height)
+            candidates.append((metadata_score, abs(width * height - 1080 * 1920),
+                               item["url"], hit.get("pageURL", ""), tags, width, height))
         if not candidates:
             return None
         candidates.sort(key=lambda item: (item[0], -item[1]), reverse=True)
-        score, _, url, page, tags = candidates[0]
+        ranked = []
+        for metadata_score, size_delta, url, page, tags, width, height in candidates[:6]:
+            score = score_video_candidate(query, tags, width, height, url)
+            ranked.append((score, size_delta, url, page, tags))
+        ranked.sort(key=lambda item: (item[0], -item[1]), reverse=True)
+        score, _, url, page, tags = ranked[0]
         if score < float(os.getenv("MIN_VISUAL_RELEVANCE", "0.38")):
             return None
         with httpx.stream("GET", url, timeout=90, follow_redirects=True) as stream:
