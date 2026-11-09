@@ -9,7 +9,7 @@ Local-first AI-assisted YouTube Shorts / Instagram Reels creator for Windows.
 
 - **Real vertical stock-video clips from Pexels or Pixabay** when a provider API key is configured
 - Fallback: Wikimedia Commons / publisher still images animated with a slow camera move
-- FFmpeg clip normalization, crossfade transitions, word-timed karaoke captions (ElevenLabs alignment), and loudness mastering
+- FFmpeg clip normalization, crossfade transitions, sentence-timed captions (Piper does not provide word-level alignment), and loudness mastering
 - 1080 × 1920, 30 FPS MP4 output
 
 ## Local voice setup
