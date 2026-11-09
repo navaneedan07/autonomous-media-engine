@@ -8,7 +8,7 @@ Local-first AI-assisted YouTube Shorts / Instagram Reels creator for Windows.
 - Expressive neural English narration using Edge TTS (internet required, no paid API key)
 - **Real vertical stock-video clips from Pexels or Pixabay** when a provider API key is configured
 - Fallback: Wikimedia Commons / publisher still images animated with a slow camera move
-- FFmpeg clip normalization, montage, and burned-in sentence captions
+- FFmpeg clip normalization, crossfade transitions, word-timed karaoke captions (ElevenLabs alignment), and loudness mastering
 - 1080 × 1920, 30 FPS MP4 output
 
 ## Stock video API setup
@@ -105,7 +105,7 @@ A previously rendered video must be approved again before re-rendering.
 ## Important limitations
 - Real stock footage requires a Pexels API key and internet access. Matching clips are not guaranteed for every scene.
 - The fallback uses still images; it does not fabricate them as video footage.
-- Captions are sentence-timed approximations across the voice track, not phoneme-perfect word-level karaoke captions.
+- ElevenLabs character timestamps are grouped into compact 2–3 word karaoke captions. Edge TTS fallback uses estimated word timing.
 - Review script facts, clip relevance, source pages and license terms before publishing.
 - No automatic YouTube/Instagram publishing is implemented.
 
