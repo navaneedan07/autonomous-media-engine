@@ -381,7 +381,7 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
             centiseconds = max(1, int((finish - begin) * 100))
             karaoke.append(f"{{\\kf{centiseconds}}}{safe_ass(word)}")
         events.append(f"Dialogue: 0,{ass_time(start_time)},{ass_time(end_time)},Default,,0,0,0,,{' '.join(karaoke)}")
-    ass_path.write_text(header + "\\n".join(events) + "\\n", encoding="utf-8")
+    ass_path.write_text(header + "\n".join(events) + "\n", encoding="utf-8")
 
     output_path = work / f"ame_video_{video_id}.mp4"
     subtitle_path = ass_path.as_posix()
