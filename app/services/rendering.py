@@ -73,7 +73,11 @@ def _pexels_clip(query: str, destination: Path):
             return None
         ranked = []
         for width, height, link, page in candidates[:8]:
-            score = score_video_candidate(query, "", width, height, link)
+            score = score_video_candidate(query, page, width, height, link)
+            if os.getenv("AME_CLIP_ENABLED", "true").lower() not in {"1", "true", "yes"}:
+                # Pexels does not expose searchable tags in this response. The
+                # search query is a weak relevance signal, not visual verification.
+                score = max(score, 0.30)
             ranked.append((score, abs(width * height - 1080 * 1920), link, page))
         ranked.sort(key=lambda x: (x[0], -x[1]), reverse=True)
         score, _, url, page = ranked[0]
