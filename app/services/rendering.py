@@ -217,7 +217,7 @@ def render_approved_video(video_id: int) -> dict:
 
     work = VIDEO_OUTPUT_DIR / f"video_{video_id}"
     work.mkdir(parents=True, exist_ok=True)
-    audio_path = work / "narration.mp3"
+    audio_path = work / "narration.wav"
     synthesize_speech(narration, str(audio_path))
     try:
         scenes = json.loads(row["scene_plan"] or "[]")
