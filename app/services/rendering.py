@@ -61,7 +61,7 @@ def _pexels_clip(query: str, destination: Path):
                     candidates.append((width * height, item["link"], video.get("url", "")))
         if not candidates:
             return None
-        candidates.sort(key=lambda x: (x[0] > 1920 * 1080, x[0]))
+        candidates.sort(key=lambda x: abs(x[0] - (1080 * 1920)))
         _, url, page = candidates[0]
         with httpx.stream("GET", url, timeout=90, follow_redirects=True) as stream:
             stream.raise_for_status()
@@ -268,7 +268,7 @@ def render_approved_video(video_id: int) -> dict:
     output_path = work / f"ame_video_{video_id}.mp4"
     # Subtitles are burned in using FFmpeg's subtitles filter. The narration is foreground audio.
     subtitle_path = str(caption_file.resolve()).replace("\\", "/").replace(":", "\\:")
-    vf = f"subtitles='{subtitle_path}':force_style='FontName=Arial,FontSize=17,PrimaryColour=&H00FFFFFF,OutlineColour=&H80000000,BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=170',format=yuv420p"
+    vf = f"subtitles='{subtitle_path}':force_style='FontName=Arial,FontSize=24,PrimaryColour=&H00FFFFFF,OutlineColour=&H80000000,BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=170',format=yuv420p"
     command = [FFMPEG_BIN, "-y", "-i", str(silent_video), "-i", str(audio_path),
                "-vf", vf, "-map", "0:v:0", "-map", "1:a:0", "-shortest",
                "-c:v", VIDEO_CODEC, "-preset", VIDEO_PRESET, "-crf", str(VIDEO_CRF),
