@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from app.config import APP_NAME
+from app.services.rendering import export_profile
 from app.db import init_db
 from app.services.research import discover_topics,list_topics
 from app.services.ollama import status as ollama_status
@@ -19,6 +20,11 @@ def root(): return {"name":APP_NAME,"status":"running","docs":"/docs"}
 
 @app.get("/health")
 def health(): return {"status":"ok"}
+
+@app.get("/render/settings")
+def render_settings():
+    """Return the configured vertical video export profile; does not render a video."""
+    return export_profile()
 
 @app.get("/ollama/status")
 async def ollama(): return await ollama_status()
