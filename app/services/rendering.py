@@ -8,7 +8,6 @@ import json
 import re
 import subprocess
 from pathlib import Path
-from urllib.parse import urlparse
 import httpx
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 from app.config import (
@@ -223,14 +222,6 @@ def render_approved_video(video_id: int) -> dict:
                     "-c:a", "aac", "-b:a", VIDEO_AUDIO_BITRATE, "-shortest",
                     "-movflags", "+faststart", str(output_path)])
 
-    # Continuous slow zoom gives still photographs motion rather than slide transitions.
-    zoom = (f"zoompan=z='min(zoom+0.0009,1.12)':"
-            f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
-            f"d=1:s={VIDEO_WIDTH}x{VIDEO_HEIGHT}:fps={VIDEO_FPS},format=yuv420p")
-    command = [FFMPEG_BIN, "-y", "-f", "concat", "-safe", "0", "-i", str(work / "visuals.txt"),
-               "-i", str(audio_path), "-vf", zoom, "-c:v", VIDEO_CODEC, "-preset", VIDEO_PRESET,
-               "-crf", str(VIDEO_CRF), "-c:a", "aac", "-b:a", VIDEO_AUDIO_BITRATE,
-               "-shortest", "-movflags", "+faststart", str(output_path)]
     try:
         result = subprocess.run(command, capture_output=True, text=True, timeout=900)
     except FileNotFoundError as exc:
