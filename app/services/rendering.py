@@ -277,7 +277,7 @@ def render_approved_video(video_id: int) -> dict:
         _run([FFMPEG_BIN, "-y", "-i", str(source), "-vf",
               f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT}:force_original_aspect_ratio=increase,"
               f"crop={VIDEO_WIDTH}:{VIDEO_HEIGHT},fps={VIDEO_FPS},setsar=1,format=yuv420p",
-              "-an", "-t", "8", "-c:v", VIDEO_CODEC, "-preset", VIDEO_PRESET,
+              "-an", "-t", "6", "-c:v", VIDEO_CODEC, "-preset", VIDEO_PRESET,
               "-crf", str(VIDEO_CRF), "-pix_fmt", "yuv420p", str(target)], "Clip normalization")
         normalized.append(target)
 
@@ -378,9 +378,9 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
         "video_id": video_id, "status": "rendered", "rendered_path": str(output_path.resolve()),
         "resolution": f"{VIDEO_WIDTH}x{VIDEO_HEIGHT}", "fps": VIDEO_FPS,
         "visual_style": "Pexels stock video montage when API key is configured; otherwise moving stills",
-        "voice": "expressive neural English voice", "visual_assets": len(clip_files),
+        "voice_provider": "elevenlabs" if (os.getenv("ELEVENLABS_API_KEY") and os.getenv("ELEVENLABS_VOICE_ID")) else "edge-tts", "visual_assets": len(clip_files),
         "pexels_enabled": bool(PEXELS_API_KEY),
         "pixabay_enabled": bool(PIXABAY_API_KEY),
-        "captions": "sentence-timed burned-in subtitles",
+        "captions": "character-aligned karaoke captions when ElevenLabs is configured; estimated timing in fallback mode",
         "attribution_file": str((work / "attributions.json").resolve()),
     }
