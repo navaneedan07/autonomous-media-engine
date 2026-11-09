@@ -28,7 +28,7 @@ def synthesize_speech(text: str, output_path: str) -> dict:
     # neural voice; it does not provide ElevenLabs-style emotion controls.
     syn_config = SynthesisConfig(
         volume=1.0,
-        length_scale=float(os.getenv("PIPER_LENGTH_SCALE", "0.94")),
+        length_scale=float(os.getenv("PIPER_LENGTH_SCALE", "1.16")),
         noise_scale=float(os.getenv("PIPER_NOISE_SCALE", "0.72")),
         noise_w_scale=float(os.getenv("PIPER_NOISE_W_SCALE", "0.78")),
         normalize_audio=True,
