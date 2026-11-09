@@ -45,36 +45,40 @@ def _font(size, bold=False):
 
 
 def _pexels_clip(query: str, destination: Path):
-    """Retrieve several candidates and rank actual frames when local CLIP is installed."""
+    """Search multiple phrase variants, then rank sampled frames with local CLIP."""
     if not PEXELS_API_KEY:
         return None
     try:
-        response = httpx.get(
-            "https://api.pexels.com/videos/search",
-            params={"query": query, "per_page": 12, "orientation": "portrait"},
-            headers={"Authorization": PEXELS_API_KEY}, timeout=30,
-        )
-        response.raise_for_status()
-        candidates = []
-        for video in response.json().get("videos", []):
-            page = video.get("url", "")
-            description = " ".join([page.rsplit("/", 2)[-2], video.get("user", {}).get("name", "")])
-            files = [item for item in video.get("video_files", [])
-                     if item.get("link") and (item.get("height") or 0) >= (item.get("width") or 0)
-                     and (item.get("width") or 0) >= 720]
-            if files:
-                item = max(files, key=lambda value: (value.get("width") or 0) * (value.get("height") or 0))
-                candidates.append((description, item["width"], item["height"], item["link"], page))
+        from app.services.visual_matching import score_video_candidate
+        candidates, seen = [], set()
+        for search_query in queries(query):
+            response = httpx.get(
+                "https://api.pexels.com/videos/search",
+                params={"query": search_query, "per_page": 12, "orientation": "portrait"},
+                headers={"Authorization": PEXELS_API_KEY}, timeout=30,
+            )
+            response.raise_for_status()
+            for video in response.json().get("videos", []):
+                page = video.get("url", "")
+                if not page or page in seen:
+                    continue
+                seen.add(page)
+                files = [item for item in video.get("video_files", [])
+                         if item.get("link") and (item.get("height") or 0) >= (item.get("width") or 0)
+                         and (item.get("width") or 0) >= 720]
+                if files:
+                    item = max(files, key=lambda value: (value.get("width") or 0) * (value.get("height") or 0))
+                    candidates.append((item["width"], item["height"], item["link"], page))
         if not candidates:
             return None
-        from app.services.visual_matching import score_video_candidate
         ranked = []
-        for description, width, height, link, page in candidates[:6]:
-            score = score_video_candidate(query, description, width, height, link)
+        for width, height, link, page in candidates[:8]:
+            score = score_video_candidate(query, "", width, height, link)
             ranked.append((score, abs(width * height - 1080 * 1920), link, page))
         ranked.sort(key=lambda x: (x[0], -x[1]), reverse=True)
         score, _, url, page = ranked[0]
-        if score < float(os.getenv("MIN_VISUAL_RELEVANCE", "0.38")):
+        minimum = float(os.getenv("MIN_VISUAL_RELEVANCE", "0.28"))
+        if score < minimum:
             return None
         with httpx.stream("GET", url, timeout=90, follow_redirects=True) as stream:
             stream.raise_for_status()
@@ -83,49 +87,56 @@ def _pexels_clip(query: str, destination: Path):
                     f.write(chunk)
         if destination.exists() and destination.stat().st_size > 100_000:
             return {"provider": "Pexels", "page": page, "relevance_score": round(score, 3),
+                    "search_queries": queries(query),
+                    "matching_method": "CLIP sampled frames" if os.getenv("AME_CLIP_ENABLED", "true").lower() in {"1","true","yes"} else "metadata fallback",
                     "license": "Pexels license; review terms before publication"}
     except Exception:
         destination.unlink(missing_ok=True)
     return None
 
 
+
 def _pixabay_clip(query: str, destination: Path):
-    """Search Pixabay and rank candidate metadata plus sampled visual frames."""
+    """Search several Pixabay phrases and rerank the best candidates."""
     if not PIXABAY_API_KEY:
         return None
     try:
-        response = httpx.get(
-            "https://pixabay.com/api/videos/",
-            params={"key": PIXABAY_API_KEY, "q": (queries(query, "") or [query])[0],
-                    "per_page": 20, "safesearch": "true", "min_width": 720},
-            timeout=30,
-        )
-        response.raise_for_status()
         from app.services.visual_matching import score_video_candidate
-        candidates = []
-        for hit in response.json().get("hits", []):
-            variants = [((hit.get("videos") or {}).get(name) or {})
-                        for name in ("large", "medium", "small", "tiny")]
-            variants = [item for item in variants if item.get("url")
-                        and (item.get("width") or 0) >= 720
-                        and (item.get("height") or 0) >= 720]
-            if not variants:
-                continue
-            item = max(variants, key=lambda value: (value.get("width") or 0) * (value.get("height") or 0))
-            width, height, tags = item["width"], item["height"], hit.get("tags", "")
-            metadata_score = relevance(query, tags, width, height)
-            candidates.append((metadata_score, abs(width * height - 1080 * 1920),
-                               item["url"], hit.get("pageURL", ""), tags, width, height))
+        candidates, seen = [], set()
+        for search_query in queries(query):
+            response = httpx.get(
+                "https://pixabay.com/api/videos/",
+                params={"key": PIXABAY_API_KEY, "q": search_query, "per_page": 20,
+                        "safesearch": "true", "min_width": 720},
+                timeout=30,
+            )
+            response.raise_for_status()
+            for hit in response.json().get("hits", []):
+                page = hit.get("pageURL", "")
+                if not page or page in seen:
+                    continue
+                seen.add(page)
+                variants = [((hit.get("videos") or {}).get(name) or {})
+                            for name in ("large", "medium", "small", "tiny")]
+                variants = [item for item in variants if item.get("url")
+                            and (item.get("width") or 0) >= 720
+                            and (item.get("height") or 0) >= 720]
+                if not variants:
+                    continue
+                item = max(variants, key=lambda value: (value.get("width") or 0) * (value.get("height") or 0))
+                candidates.append((item["width"], item["height"], item["url"], page, hit.get("tags", "")))
         if not candidates:
             return None
-        candidates.sort(key=lambda item: (item[0], -item[1]), reverse=True)
+        # Use tag overlap to shortlist before the more expensive frame analysis.
+        candidates.sort(key=lambda item: relevance(query, item[4], item[0], item[1]), reverse=True)
         ranked = []
-        for metadata_score, size_delta, url, page, tags, width, height in candidates[:6]:
+        for width, height, url, page, tags in candidates[:8]:
             score = score_video_candidate(query, tags, width, height, url)
-            ranked.append((score, size_delta, url, page, tags))
+            ranked.append((score, abs(width * height - 1080 * 1920), url, page, tags))
         ranked.sort(key=lambda item: (item[0], -item[1]), reverse=True)
         score, _, url, page, tags = ranked[0]
-        if score < float(os.getenv("MIN_VISUAL_RELEVANCE", "0.38")):
+        minimum = float(os.getenv("MIN_VISUAL_RELEVANCE", "0.28"))
+        if score < minimum:
             return None
         with httpx.stream("GET", url, timeout=90, follow_redirects=True) as stream:
             stream.raise_for_status()
@@ -134,11 +145,13 @@ def _pixabay_clip(query: str, destination: Path):
                     output.write(chunk)
         if destination.exists() and destination.stat().st_size > 100_000:
             return {"provider": "Pixabay", "page": page, "tags": tags,
-                    "relevance_score": round(score, 3),
+                    "relevance_score": round(score, 3), "search_queries": queries(query),
+                    "matching_method": "CLIP sampled frames" if os.getenv("AME_CLIP_ENABLED", "true").lower() in {"1","true","yes"} else "metadata fallback",
                     "license": "Pixabay Content License; review current terms"}
     except Exception:
         destination.unlink(missing_ok=True)
     return None
+
 
 
 def _download_image(url: str, path: Path) -> bool:
