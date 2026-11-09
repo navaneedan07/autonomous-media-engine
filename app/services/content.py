@@ -6,18 +6,22 @@ from app.services.ollama import generate
 
 
 def _serialize_json_field(value, field_name):
-    """Persist structured model output in SQLite TEXT columns safely."""
-    if isinstance(value, str):
-        # Preserve valid JSON strings as-is; encode ordinary strings as JSON strings.
-        try:
-            json.loads(value)
-            return value
-        except (TypeError, json.JSONDecodeError):
-            return json.dumps(value, ensure_ascii=False)
+    """Convert structured model output to SQLite-compatible JSON text."""
     try:
-        return json.dumps(value, ensure_ascii=False)
+        return json.dumps(value, ensure_ascii=False) if not isinstance(value, str) else value
     except (TypeError, ValueError) as exc:
         raise ValueError(f"Generated field '{field_name}' is not JSON serializable") from exc
+
+
+def _to_text(value, field_name):
+    """Ensure values destined for SQLite TEXT columns are scalar strings."""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (dict, list, tuple)):
+        return _serialize_json_field(value, field_name)
+    if value is None:
+        return ""
+    return str(value)
 
 
 def get_video(video_id):
@@ -35,18 +39,21 @@ async def create_draft(topic_id):
         raise ValueError("Topic not found")
 
     data = await generate(topic, CONTENT_LANGUAGE, VIDEO_MIN_SECONDS, VIDEO_MAX_SECONDS)
-    # SQLite parameters must be scalar values. Scene plans and hashtags are
-    # stored as JSON text, not passed as Python lists/dicts.
+
+    # Every SQLite TEXT parameter must be scalar. LLMs may return arrays or
+    # objects for fact_check_notes, hashtags, and scene_plan.
     scene_plan_json = _serialize_json_field(data["scene_plan"], "scene_plan")
     hashtags_json = _serialize_json_field(data["hashtags"], "hashtags")
+    fact_check_notes_text = _to_text(data["fact_check_notes"], "fact_check_notes")
 
     with get_db() as db:
         cur = db.execute("""INSERT INTO scripts
         (topic_id,language,hook,narration,scene_plan,title,description,hashtags,fact_check_notes,model_name)
         VALUES (?,?,?,?,?,?,?,?,?,?)""",
-        (topic_id, CONTENT_LANGUAGE, data["hook"], data["narration"],
-         scene_plan_json, data["title"], data["description"],
-         hashtags_json, data["fact_check_notes"], OLLAMA_MODEL))
+        (topic_id, CONTENT_LANGUAGE, _to_text(data["hook"], "hook"),
+         _to_text(data["narration"], "narration"), scene_plan_json,
+         _to_text(data["title"], "title"), _to_text(data["description"], "description"),
+         hashtags_json, fact_check_notes_text, OLLAMA_MODEL))
         script_id = cur.lastrowid
         cur = db.execute("INSERT INTO videos(topic_id,script_id,duration_target_seconds,status) VALUES (?,?,?,'draft')",
                          (topic_id, script_id, VIDEO_MAX_SECONDS))
