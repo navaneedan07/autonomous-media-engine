@@ -60,8 +60,11 @@ Invoke-RestMethod -Method Post http://127.0.0.1:8000/videos/1/approve -ContentTy
 ## n8n workflow
 Import `workflows/daily_research_and_draft.json` into local n8n. If n8n runs directly on Windows, `127.0.0.1` works. If n8n runs in Docker, change the API host to `host.docker.internal`. Test manually before activating the schedule.
 
+## Video export profile
+The default vertical export target is **Full HD 1080 × 1920 (9:16), 30 fps**, H.264 (`libx264`), CRF 20, medium preset, with 192 kbps AAC audio. This is the configured export profile for Shorts and Reels. Change `VIDEO_WIDTH` and `VIDEO_HEIGHT` in `.env` to override it. The `/render/settings` endpoint reports the active profile. The current milestone configures the export pipeline; complete scene assembly, voice generation and end-to-end FFmpeg rendering are not implemented yet.
+
 ## Configuration
-Edit `.env`: model, Ollama URL, content language, duration bounds and RSS item limit.
+Edit `.env`: model, Ollama URL, content language, duration bounds, RSS item limit and video export profile.
 
 ## Important
 RSS topic scoring is a basic heuristic, not validated market research. Always inspect source URLs and verify claims, especially health, finance, safety or scientific claims. Use original scripts and licensed media. Never assume AI-generated content automatically qualifies for monetization.
