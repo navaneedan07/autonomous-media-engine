@@ -16,6 +16,7 @@ from app.config import (
 )
 from app.db import get_db
 from app.services.tts import synthesize_speech
+from app.services.visual_matching import queries, relevance
 
 import os
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "").strip()
@@ -85,7 +86,7 @@ def _pixabay_clip(query: str, destination: Path):
     try:
         response = httpx.get(
             "https://pixabay.com/api/videos/",
-            params={"key": PIXABAY_API_KEY, "q": query, "per_page": 8,
+            params={"key": PIXABAY_API_KEY, "q": (queries(query, "") or [query])[0], "per_page": 20,
                     "safesearch": "true", "min_width": 720},
             timeout=30,
         )
@@ -98,18 +99,20 @@ def _pixabay_clip(query: str, destination: Path):
                 url = item.get("url")
                 width, height = item.get("width") or 0, item.get("height") or 0
                 if url and width >= 720 and height >= 720:
-                    candidates.append((width * height, url, hit.get("pageURL", ""), hit.get("tags", "")))
+                    candidates.append((relevance(query, hit.get("tags", ""), width, height), width * height, url, hit.get("pageURL", ""), hit.get("tags", "")))
         if not candidates:
             return None
-        candidates.sort(key=lambda item: abs(item[0] - 1080 * 1920))
-        _, url, page, tags = candidates[0]
+        candidates.sort(key=lambda item: (item[0], -abs(item[1] - 1080 * 1920)), reverse=True)
+        score, _, url, page, tags = candidates[0]
+        if score < float(os.getenv("MIN_VISUAL_RELEVANCE", "0.22")):
+            return None
         with httpx.stream("GET", url, timeout=90, follow_redirects=True) as stream:
             stream.raise_for_status()
             with destination.open("wb") as output:
                 for chunk in stream.iter_bytes(1024 * 1024):
                     output.write(chunk)
         if destination.exists() and destination.stat().st_size > 100_000:
-            return {"provider": "Pixabay", "page": page, "tags": tags,
+            return {"provider": "Pixabay", "page": page, "tags": tags, "relevance_score": round(score, 3),
                     "license": "Pixabay Content License; review current terms"}
     except Exception:
         destination.unlink(missing_ok=True)
