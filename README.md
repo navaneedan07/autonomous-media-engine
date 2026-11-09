@@ -1,21 +1,21 @@
 # Autonomous Media Engine (AME)
 
-Local-first backend for AI-assisted bilingual English/Tamil short-form content research and script drafting.
+Local-first AI-assisted short-form content engine for Windows.
 
-## Included in this first build
-- FastAPI backend
-- SQLite database and schema initialization
-- RSS topic discovery and heuristic niche/topic scoring
-- Ollama local model integration
-- Bilingual English/Tamil script generation (30-45 seconds)
-- Draft listing and explicit approve/reject endpoints
-- Importable n8n daily research + draft workflow
+## Current capabilities
+- RSS-based topic discovery with heuristic scoring
+- Local Ollama script generation (Gemma 3 4B default)
+- English-first 30–45 second script drafts
+- SQLite storage and explicit human approval/rejection
+- Offline Windows SAPI text-to-speech through pyttsx3
+- Locally generated portrait motion-graphic scene cards
+- FFmpeg MP4 assembly at 1080 × 1920, 30 FPS
 
-**No automatic publishing is implemented.** Approval only records a human decision. Video rendering, TTS and social publishing are later milestones.
+**Important:** the first renderer produces clean text-based motion-graphic cards with a local system voice. It does not generate photorealistic footage or source images. Review all claims and source links before approving. Social publishing is not implemented.
 
 ## Windows setup
 
-Requires Windows 10/11, Python 3.11+, Ollama. Node.js is optional for n8n.
+Requirements: Windows 10/11, Python 3.11+, Ollama, and FFmpeg available on PATH.
 
 ```powershell
 py -3.11 -m venv .venv
@@ -24,14 +24,24 @@ pip install -r requirements.txt
 Copy-Item .env.example .env
 ```
 
-Install Ollama from https://ollama.com, then:
+Install Ollama from https://ollama.com and download the model:
 
 ```powershell
-ollama pull qwen2.5:3b
+ollama pull gemma3:4b
 ollama serve
 ```
 
-In another PowerShell window:
+Install FFmpeg and ensure `ffmpeg -version` works in PowerShell. The TTS adapter uses installed Windows speech voices (SAPI); no cloud TTS API key is needed.
+
+Edit `.env` if necessary. Defaults:
+- `OLLAMA_MODEL=gemma3:4b`
+- `CONTENT_LANGUAGE=english`
+- `VIDEO_MIN_SECONDS=30`
+- `VIDEO_MAX_SECONDS=45`
+- `VIDEO_WIDTH=1080`, `VIDEO_HEIGHT=1920`, `VIDEO_FPS=30`
+- `VIDEO_OUTPUT_DIR=./output`
+
+Start the API:
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
@@ -40,31 +50,29 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 
 API docs: http://127.0.0.1:8000/docs
 
-## Test
+## Workflow
+
+1. Discover topics: `POST /research/discover`
+2. List topics: `GET /topics`
+3. Generate script: `POST /videos/generate/{topic_id}`
+4. Inspect script: `GET /videos/{video_id}`
+5. Approve only after reviewing: `POST /videos/{video_id}/approve`
+6. Render approved video: `POST /videos/{video_id}/render`
+7. Retrieve output path from the response. Files are written under `output/video_{id}/`.
+
+Example PowerShell render call:
 
 ```powershell
-Invoke-RestMethod http://127.0.0.1:8000/health
-Invoke-RestMethod http://127.0.0.1:8000/ollama/status
-Invoke-RestMethod -Method Post http://127.0.0.1:8000/research/discover
-Invoke-RestMethod http://127.0.0.1:8000/topics
-Invoke-RestMethod -Method Post http://127.0.0.1:8000/videos/generate/1
-Invoke-RestMethod http://127.0.0.1:8000/videos
+Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/videos/1/render" |
+    ConvertTo-Json -Depth 5
 ```
 
-Approve a draft:
+The render endpoint refuses drafts that are not approved. Rendering requires FFmpeg and Windows SAPI voices. If your existing approved script was generated before the English default was set, it remains unchanged; generate a new script to use the English prompt.
 
-```powershell
-Invoke-RestMethod -Method Post http://127.0.0.1:8000/videos/1/approve -ContentType "application/json" -Body '{"reason":"Reviewed manually"}'
-```
-
-## n8n workflow
-Import `workflows/daily_research_and_draft.json` into local n8n. If n8n runs directly on Windows, `127.0.0.1` works. If n8n runs in Docker, change the API host to `host.docker.internal`. Test manually before activating the schedule.
-
-## Video export profile
-The default vertical export target is **Full HD 1080 × 1920 (9:16), 30 fps**, H.264 (`libx264`), CRF 20, medium preset, with 192 kbps AAC audio. This is the configured export profile for Shorts and Reels. Change `VIDEO_WIDTH` and `VIDEO_HEIGHT` in `.env` to override it. The `/render/settings` endpoint reports the active profile. The current milestone configures the export pipeline; complete scene assembly, voice generation and end-to-end FFmpeg rendering are not implemented yet.
-
-## Configuration
-Edit `.env`: model, Ollama URL, content language, duration bounds, RSS item limit and video export profile.
-
-## Important
-RSS topic scoring is a basic heuristic, not validated market research. Always inspect source URLs and verify claims, especially health, finance, safety or scientific claims. Use original scripts and licensed media. Never assume AI-generated content automatically qualifies for monetization.
+## Notes and limitations
+- Existing local `.env` values override `.env.example`; update `CONTENT_LANGUAGE=english` manually if your local file still says bilingual.
+- RSS topic scoring is a basic heuristic, not validated market research.
+- The first visual style is text-card motion graphics, not generated stock footage or video.
+- TTS voice quality depends on Windows voices installed on the machine.
+- No automatic YouTube/Instagram publishing is implemented.
+- Verify factual claims against original sources and use only media you have rights to use.
