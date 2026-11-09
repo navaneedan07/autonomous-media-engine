@@ -90,14 +90,14 @@ For stronger scene-to-footage relevance, install the optional CPU CLIP stack:
 powershell -ExecutionPolicy Bypass -File scripts/setup_clip.ps1
 ```
 
-This installs PyTorch and Transformers and can consume several GB of disk space. The first render downloads the CLIP model weights. It samples frames from candidate videos and compares them with the scene description. It does not prove factual correctness, and CPU ranking adds render time.
+This installs PyTorch and Transformers and can consume several GB of disk space. The first render downloads the CLIP model weights. It samples frames from candidate videos and compares them with the scene description. AME searches multiple short phrase variants per scene to improve recall. It does not prove factual correctness, and CPU ranking adds render time.
 
 Settings:
 
 ```env
 AME_CLIP_ENABLED=true
 AME_CLIP_MODEL=openai/clip-vit-base-patch32
-MIN_VISUAL_RELEVANCE=0.38
+MIN_VISUAL_RELEVANCE=0.28
 ```
 
 If installation is too heavy for the PC, set `AME_CLIP_ENABLED=false`. Metadata matching remains available but should be treated as a weaker fallback.
