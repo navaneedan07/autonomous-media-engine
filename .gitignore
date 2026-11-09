@@ -3,3 +3,7 @@ __pycache__/
 .env
 data/*.db
 renders/
+
+# Downloaded local TTS models (do not commit model weights)
+models/voices/
+output/
