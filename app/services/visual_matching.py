@@ -36,10 +36,21 @@ def keywords(value: str) -> set[str]:
 
 
 def queries(visual: str, topic: str = "") -> list[str]:
-    words = [w for w in re.findall(r"[a-z0-9]+", (visual or "").lower())
-             if w not in STOP and len(w) > 2 and w not in {"samsung", "cleanbot"} and not w.endswith("bot")]
-    result = [" ".join(words[:4]), " ".join(words[:2])]
-    return list(dict.fromkeys(q for q in result if q))
+    """Produce several short, searchable phrases rather than one brittle sentence."""
+    raw = re.findall(r"[a-z0-9]+", (visual or "").lower())
+    words = [w for w in raw if w not in STOP and len(w) > 2
+             and w not in {"samsung", "cleanbot"} and not w.endswith("bot")]
+    phrases = []
+    if words:
+        phrases.append(" ".join(words[:5]))
+        phrases.append(" ".join(words[-4:]))
+        # Search the most concrete noun/action pair and a shorter fallback.
+        phrases.append(" ".join(words[:2]))
+    topic_words = [w for w in re.findall(r"[a-z0-9]+", (topic or "").lower())
+                   if w not in STOP and len(w) > 2]
+    if topic_words:
+        phrases.append(" ".join(topic_words[:3]))
+    return list(dict.fromkeys(q for q in phrases if q))[:4]
 
 
 def relevance(visual: str, tags: str, width: int, height: int) -> float:
@@ -114,7 +125,7 @@ def score_video_candidate(query: str, description: str, width: int,
                 similarity = float(cosine.max().item())
             # CLIP cosine similarities for stock footage commonly occupy a
             # narrow range. Map to a bounded ranking score, not a probability.
-            visual_score = max(0.0, min(1.0, (similarity - 0.15) / 0.25))
-            return max(0.0, min(1.0, visual_score * 0.9 + metadata_score * 0.1))
+            visual_score = max(0.0, min(1.0, (similarity - 0.18) / 0.18))
+            return max(0.0, min(1.0, visual_score * 0.95 + metadata_score * 0.05))
     except Exception:
         return metadata_score
