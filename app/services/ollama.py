@@ -15,20 +15,20 @@ async def status():
 async def generate(topic, language, min_seconds, max_seconds):
     prompt = f"""
 Create an original {min_seconds}-{max_seconds} second 9:16 explainer script.
-Language: {language}. For bilingual output, naturally mix English and Tamil and include both.
+Language: English only. Use short, natural spoken sentences with commas and full stops to create audible pauses.
 Topic: {topic['title']}
 Source URL: {topic['url']}
 Publisher: {topic.get('source_name')}
 Source summary: {topic.get('summary')}
 Return ONLY JSON with keys:
-hook (max 12 words), narration (roughly 75-100 English-equivalent words),
-scene_plan (5-7 objects with time, visual, on_screen_text),
+hook (max 12 words), narration (roughly 65-80 words for a 30-40 second voice-over at a calm 125-140 words per minute),
+scene_plan (5-7 objects with time, visual, on_screen_text). Each visual must describe one concrete, filmable subject/action directly illustrating that exact narration beat; use short stock-footage search phrases, not abstract concepts, metaphors, generic technology graphics, or unrelated B-roll. Keep scene order aligned to narration order. Never introduce an object, activity, industry, product, or setting absent from the narration. If a beat has no honest stock-footage representation, describe the closest literal real-world action rather than inventing a scene. on_screen_text must be a short readable phrase (max 5 words), never timestamps or narration paragraphs.
 title, description, hashtags (array), fact_check_notes, sources (array).
 Do not invent statistics, dates, quotes or findings. Explicitly flag claims needing verification.
 Do not copy article wording. Attribute source in description.
 """
     payload = {"model":OLLAMA_MODEL,
-      "messages":[{"role":"system","content":"You are a rigorous bilingual short-form science and technology documentary writer. Return valid JSON only."},
+      "messages":[{"role":"system","content":"You are a rigorous English-only short-form science and technology documentary writer and factual visual planner. Never invent illustrative scenes. Return valid JSON only."},
                   {"role":"user","content":prompt}],
       "stream":False,"format":"json","options":{"temperature":0.45}}
     async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SECONDS) as client:
