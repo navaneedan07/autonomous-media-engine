@@ -108,3 +108,22 @@ A previously rendered video must be approved again before re-rendering.
 - Captions are sentence-timed approximations across the voice track, not phoneme-perfect word-level karaoke captions.
 - Review script facts, clip relevance, source pages and license terms before publishing.
 - No automatic YouTube/Instagram publishing is implemented.
+
+
+## Expressive ElevenLabs narration (recommended)
+
+Set these in your local `.env` (never commit your API key):
+
+```env
+ELEVENLABS_API_KEY=your_key
+ELEVENLABS_VOICE_ID=your_selected_voice_id
+ELEVENLABS_MODEL_ID=eleven_multilingual_v2
+ELEVENLABS_STABILITY=0.38
+ELEVENLABS_SIMILARITY=0.78
+ELEVENLABS_STYLE=0.35
+ELEVENLABS_SPEED=1.06
+```
+
+Get an API key and choose a voice in your ElevenLabs account: https://elevenlabs.io/app/settings/api-keys and https://elevenlabs.io/app/voice-library. The voice ID is available in the voice details. AME calls the official text-to-speech-with-timestamps endpoint, so it can save character timing for synchronized captions. API usage consumes credits; check your current plan and credit balance before rendering. If the ElevenLabs key or voice ID is absent, AME falls back to Edge TTS.
+
+ElevenLabs settings: lower stability adds variation; style exaggeration is supported by v2/v3 models; speaker boost improves clarity/similarity. These are starting values, not a guarantee of a particular performance. Preview a selected voice before committing credits.
