@@ -1,4 +1,2 @@
-# Optional CPU semantic visual reranking. PyTorch CPU wheels are large.
-# Install only if the machine has several GB of free disk space.
-torch>=2.3,<3
+# Transformers for the local CLIP processor/model. Install CPU-only PyTorch separately via setup_clip.ps1.
 transformers>=4.44,<5
