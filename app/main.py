@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from app.config import APP_NAME
-from app.services.rendering import export_profile
+from app.services.rendering import export_profile, render_approved_video
 from app.db import init_db
 from app.services.research import discover_topics,list_topics
 from app.services.ollama import status as ollama_status
@@ -20,6 +20,12 @@ def root(): return {"name":APP_NAME,"status":"running","docs":"/docs"}
 
 @app.get("/health")
 def health(): return {"status":"ok"}
+
+@app.post("/videos/{video_id}/render")
+def render_video(video_id:int):
+    try: return render_approved_video(video_id)
+    except ValueError as e: raise HTTPException(400,str(e))
+    except Exception as e: raise HTTPException(500,"Rendering failed: "+str(e))
 
 @app.get("/render/settings")
 def render_settings():
