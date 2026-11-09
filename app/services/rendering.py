@@ -281,39 +281,90 @@ def render_approved_video(video_id: int) -> dict:
               "-crf", str(VIDEO_CRF), "-pix_fmt", "yuv420p", str(target)], "Clip normalization")
         normalized.append(target)
 
-    concat_file = work / "clips.txt"
-    concat_file.write_text("".join(f"file '{p.resolve().as_posix()}'\n" for p in normalized), encoding="utf-8")
+    # Smooth crossfades replace abrupt hard cuts. Each normalized shot is six seconds.
     silent_video = work / "visual_track.mp4"
-    _run([FFMPEG_BIN, "-y", "-f", "concat", "-safe", "0", "-i", str(concat_file),
-          "-c", "copy", str(silent_video)], "Clip concatenation")
+    command = [FFMPEG_BIN, "-y"]
+    for clip in normalized:
+        command.extend(["-i", str(clip)])
+    transition = 0.35
+    filters = []
+    previous = "[0:v]"
+    for index in range(1, len(normalized)):
+        out = f"[xf{index}]"
+        offset = index * (6.0 - transition)
+        filters.append(f"{previous}[{index}:v]xfade=transition=fade:duration={transition}:offset={offset:.3f}{out}")
+        previous = out
+    filters.append(f"{previous}format=yuv420p[vout]")
+    command.extend(["-filter_complex", ";".join(filters), "-map", "[vout]", "-an",
+                    "-c:v", VIDEO_CODEC, "-preset", VIDEO_PRESET, "-crf", str(VIDEO_CRF),
+                    "-pix_fmt", "yuv420p", str(silent_video)])
+    _run(command, "Crossfade video assembly")
 
-    # Sentence-level captions, timed approximately across the narration.
-    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", narration) if s.strip()]
-    caption_file = work / "captions.srt"
-    try:
-        import wave
-        with wave.open(str(audio_path), "rb") as wav:
-            duration = wav.getnframes() / wav.getframerate()
-    except Exception:
-        duration = float(row["duration_target_seconds"] or 45)
-    total_words = max(1, sum(len(s.split()) for s in sentences))
-    cursor, srt = 0.0, []
-    for sentence in sentences:
-        span = duration * len(sentence.split()) / total_words
-        start, end = cursor, min(duration, cursor + span)
-        def stamp(value):
-            ms = int(value * 1000)
-            return f"{ms//3600000:02}:{(ms//60000)%60:02}:{(ms//1000)%60:02},{ms%1000:03}"
-        srt.extend([str(len(srt)//4+1), f"{stamp(start)} --> {stamp(end)}", sentence, ""])
-        cursor = end
-    caption_file.write_text("\n".join(srt), encoding="utf-8")
+    # Character-level timestamps from ElevenLabs are grouped into readable 2-3 word captions.
+    alignment_path = audio_path.with_suffix(".alignment.json")
+    ass_path = work / "captions.ass"
+    words = []
+    if alignment_path.exists():
+        alignment = json.loads(alignment_path.read_text(encoding="utf-8"))
+        chars = alignment.get("characters", [])
+        starts = alignment.get("character_start_times_seconds", [])
+        ends = alignment.get("character_end_times_seconds", [])
+        token, token_start, token_end = "", None, None
+        for char, begin, finish in zip(chars, starts, ends):
+            if char.isspace():
+                if token:
+                    words.append((token, float(token_start), float(token_end)))
+                    token, token_start, token_end = "", None, None
+            else:
+                if token_start is None:
+                    token_start = begin
+                token += char
+                token_end = finish
+        if token:
+            words.append((token, float(token_start), float(token_end)))
+    if not words:
+        # Edge TTS fallback: approximate timings only when ElevenLabs alignment is unavailable.
+        probe = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                                "-of", "default=noprint_wrappers=1:nokey=1", str(audio_path)],
+                               capture_output=True, text=True)
+        duration = float(probe.stdout.strip() or row["duration_target_seconds"] or 45)
+        tokens = narration.split()
+        span = duration / max(1, len(tokens))
+        words = [(word, i * span, (i + 1) * span) for i, word in enumerate(tokens)]
+
+    def ass_time(value):
+        centis = max(0, int(value * 100))
+        return f"{centis // 360000}:{(centis // 6000) % 60:02}:{(centis // 100) % 60:02}.{centis % 100:02}"
+    def safe_ass(value):
+        return value.replace("{", "(").replace("}", ")").replace("\\", "/")
+    header = """[Script Info]
+ScriptType: v4.00+
+PlayResX: 1080
+PlayResY: 1920
+ScaledBorderAndShadow: yes
+[V4+ Styles]
+Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding
+Style: Default,Arial,48,&H00FFFFFF,&H0000D7FF,&HAA000000,&H64000000,-1,0,1,2,1,2,90,90,300,1
+[Events]
+Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
+"""
+    events = []
+    for i in range(0, len(words), 3):
+        group = words[i:i+3]
+        start_time, end_time = group[0][1], group[-1][2]
+        karaoke = []
+        for word, begin, finish in group:
+            centiseconds = max(1, int((finish - begin) * 100))
+            karaoke.append(f"{{\\kf{centiseconds}}}{safe_ass(word)}")
+        events.append(f"Dialogue: 0,{ass_time(start_time)},{ass_time(end_time)},Default,,0,0,0,,{' '.join(karaoke)}")
+    ass_path.write_text(header + "\\n".join(events) + "\\n", encoding="utf-8")
 
     output_path = work / f"ame_video_{video_id}.mp4"
-    # Subtitles are burned in using FFmpeg's subtitles filter. The narration is foreground audio.
-    subtitle_path = str(caption_file.resolve()).replace("\\", "/").replace(":", "\\:")
-    vf = f"subtitles='{subtitle_path}':force_style='FontName=Arial,FontSize=24,PrimaryColour=&H00FFFFFF,OutlineColour=&H80000000,BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=170',format=yuv420p"
+    subtitle_path = str(ass_path.resolve()).replace("\\\\", "/").replace(":", "\\\\:")
+    vf = f"ass='{subtitle_path}',format=yuv420p"
+    audio_filter = "loudnorm=I=-14:TP=-1.0:LRA=7,acompressor=threshold=-18dB:ratio=2.5:attack=8:release=120,alimiter=limit=0.95"
     command = [FFMPEG_BIN, "-y", "-i", str(silent_video), "-i", str(audio_path),
-               "-vf", vf, "-map", "0:v:0", "-map", "1:a:0", "-shortest",
+               "-vf", vf, "-af", audio_filter, "-map", "0:v:0", "-map", "1:a:0", "-shortest",
                "-c:v", VIDEO_CODEC, "-preset", VIDEO_PRESET, "-crf", str(VIDEO_CRF),
                "-c:a", "aac", "-b:a", VIDEO_AUDIO_BITRATE, "-movflags", "+faststart", str(output_path)]
     _run(command, "Final video render")
