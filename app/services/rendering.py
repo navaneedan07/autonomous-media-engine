@@ -326,8 +326,28 @@ def render_approved_video(video_id: int) -> dict:
                 token_end = finish
         if token:
             words.append((token, float(token_start), float(token_end)))
+    alignment_method = "ElevenLabs timestamps" if words else "estimated fallback"
     if not words:
-        # Edge TTS fallback: approximate timings only when ElevenLabs alignment is unavailable.
+        # Optional local forced alignment via faster-whisper. CPU int8 is suitable
+        # for this 16 GB RAM / integrated-graphics target.
+        try:
+            from faster_whisper import WhisperModel
+            whisper = WhisperModel(os.getenv("AME_WHISPER_MODEL", "base.en"),
+                                   device="cpu", compute_type="int8")
+            segments, _ = whisper.transcribe(str(audio_path), word_timestamps=True,
+                                             vad_filter=True, beam_size=3)
+            for segment in segments:
+                for spoken_word in (segment.words or []):
+                    if spoken_word.word.strip():
+                        words.append((spoken_word.word.strip(),
+                                      float(spoken_word.start), float(spoken_word.end)))
+            if words:
+                alignment_method = "local faster-whisper word timestamps"
+        except ImportError:
+            pass
+        except Exception as exc:
+            attributions.append({"warning": "Whisper alignment failed: " + str(exc)})
+    if not words:
         probe = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
                                 "-of", "default=noprint_wrappers=1:nokey=1", str(audio_path)],
                                capture_output=True, text=True)
@@ -386,6 +406,6 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
         "unique_visual_sources": len(set(a.get("page") for a in attributions if a.get("page"))),
         "pexels_enabled": bool(PEXELS_API_KEY),
         "pixabay_enabled": bool(PIXABAY_API_KEY),
-        "captions": "estimated word timing; Piper does not provide forced alignment",
+        "captions": alignment_method,
         "attribution_file": str((work / "attributions.json").resolve()),
     }
