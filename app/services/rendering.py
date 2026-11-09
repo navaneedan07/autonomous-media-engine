@@ -17,6 +17,7 @@ from app.config import (
 from app.db import get_db
 from app.services.tts import synthesize_speech
 from app.services.visual_matching import queries, relevance
+from app.services.visual_matching import queries, relevance
 
 import os
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "").strip()
@@ -280,7 +281,7 @@ def render_approved_video(video_id: int) -> dict:
         _run([FFMPEG_BIN, "-y", "-i", str(source), "-vf",
               f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT}:force_original_aspect_ratio=increase,"
               f"crop={VIDEO_WIDTH}:{VIDEO_HEIGHT},fps={VIDEO_FPS},setsar=1,format=yuv420p",
-              "-an", "-t", "6", "-c:v", VIDEO_CODEC, "-preset", VIDEO_PRESET,
+              "-an", "-t", "5.5", "-c:v", VIDEO_CODEC, "-preset", VIDEO_PRESET,
               "-crf", str(VIDEO_CRF), "-pix_fmt", "yuv420p", str(target)], "Clip normalization")
         normalized.append(target)
 
@@ -289,12 +290,12 @@ def render_approved_video(video_id: int) -> dict:
     command = [FFMPEG_BIN, "-y"]
     for clip in normalized:
         command.extend(["-i", str(clip)])
-    transition = 0.35
+    transition = 0.25
     filters = []
     previous = "[0:v]"
     for index in range(1, len(normalized)):
         out = f"[xf{index}]"
-        offset = index * (6.0 - transition)
+        offset = index * (5.5 - transition)
         filters.append(f"{previous}[{index}:v]xfade=transition=fade:duration={transition}:offset={offset:.3f}{out}")
         previous = out
     filters.append(f"{previous}format=yuv420p[vout]")
@@ -382,6 +383,7 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
         "resolution": f"{VIDEO_WIDTH}x{VIDEO_HEIGHT}", "fps": VIDEO_FPS,
         "visual_style": "Pexels stock video montage when API key is configured; otherwise moving stills",
         "voice_provider": "piper-local", "visual_assets": len(clip_files),
+        "unique_visual_sources": len(set(a.get("page") for a in attributions if a.get("page"))),
         "pexels_enabled": bool(PEXELS_API_KEY),
         "pixabay_enabled": bool(PIXABAY_API_KEY),
         "captions": "estimated word timing; Piper does not provide forced alignment",
