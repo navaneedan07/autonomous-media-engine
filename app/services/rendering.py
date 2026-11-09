@@ -230,9 +230,9 @@ def render_approved_video(video_id: int) -> dict:
     if not isinstance(scenes, list) or not scenes:
         scenes = [{"visual": row["topic_title"], "on_screen_text": row["topic_title"]}]
     scenes = scenes[:10]
-    article_image = _article_image(row["topic_url"], work)
     clip_files, attributions = [], []
-    fallback_image = article_image
+    used_sources = set()
+    unmatched_scenes = []
 
     for index, scene in enumerate(scenes, 1):
         visual_query = str(scene.get("visual") or row["topic_title"]).strip()
@@ -242,37 +242,29 @@ def render_approved_video(video_id: int) -> dict:
         if not attribution:
             attribution = _pixabay_clip(visual_query, clip_path)
         if attribution:
+            source_key = attribution.get("page") or str(clip_path)
+            if source_key in used_sources:
+                clip_path.unlink(missing_ok=True)
+                attribution = None
+            else:
+                used_sources.add(source_key)
+        if attribution:
             clip_files.append(clip_path)
             attribution["query"] = visual_query
             attributions.append(attribution)
-            continue
+        else:
+            clip_path.unlink(missing_ok=True)
+            unmatched_scenes.append({"scene": index, "visual": visual_query})
 
-        # No stock-video key or no matching clip: use a licensed/reference still,
-        # but do not pretend it is footage.
-        image_path, image_credit = _commons_image(visual_query, work / f"still_{index:02d}.jpg")
-        if image_path is None:
-            image_path = fallback_image
-        if image_path is None:
-            continue
-        if image_credit:
-            attributions.append(image_credit)
-        elif image_path == fallback_image:
-            attributions.append({"provider": "Publisher article image", "source": row["topic_url"],
-                                 "license": "Reuse rights must be checked"})
-        card = work / f"visual_{index:02d}.jpg"
-        _caption_card(image_path, card, caption or row["topic_title"])
-        # Turn still into a short motion clip. Real stock footage remains the preferred path.
-        _run([FFMPEG_BIN, "-y", "-loop", "1", "-i", str(card), "-t",
-              str(max(3, int(row["duration_target_seconds"] or 45) // max(1, len(scenes)))),
-              "-vf", f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT}:force_original_aspect_ratio=increase,"
-                     f"crop={VIDEO_WIDTH}:{VIDEO_HEIGHT},zoompan=z='min(zoom+0.001,1.12)':"
-                     f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s={VIDEO_WIDTH}x{VIDEO_HEIGHT}:fps={VIDEO_FPS},format=yuv420p",
-              "-an", "-c:v", VIDEO_CODEC, "-preset", VIDEO_PRESET, "-crf", str(VIDEO_CRF),
-              str(clip_path)], "Still-image motion clip")
-        clip_files.append(clip_path)
-
-    if not clip_files:
-        raise RuntimeError("No usable video clips or images found. Add a Pexels API key or check internet access.")
+    if unmatched_scenes:
+        raise RuntimeError(
+            "Render stopped: relevant, unique stock footage could not be found for every scene. "
+            "No unrelated stills or repeated clips were substituted. Missing scenes: "
+            + json.dumps(unmatched_scenes, ensure_ascii=False)
+            + ". Configure PEXELS_API_KEY or PIXABAY_API_KEY, then retry."
+        )
+    if len(clip_files) < 3:
+        raise RuntimeError("Render stopped: fewer than 3 unique relevant video clips were found.")
 
     # Normalize all downloaded clips to identical portrait format, then concatenate.
     normalized = []
