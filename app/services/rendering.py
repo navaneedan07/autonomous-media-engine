@@ -360,8 +360,8 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
     ass_path.write_text(header + "\\n".join(events) + "\\n", encoding="utf-8")
 
     output_path = work / f"ame_video_{video_id}.mp4"
-    subtitle_path = str(ass_path.resolve()).replace("\\\\", "/").replace(":", "\\\\:")
-    vf = f"ass='{subtitle_path}',format=yuv420p"
+    subtitle_path = ass_path.as_posix()
+    vf = f"ass=filename='{subtitle_path}',format=yuv420p"
     audio_filter = "loudnorm=I=-14:TP=-1.0:LRA=7,acompressor=threshold=-18dB:ratio=2.5:attack=8:release=120,alimiter=limit=0.95"
     command = [FFMPEG_BIN, "-y", "-i", str(silent_video), "-i", str(audio_path),
                "-vf", vf, "-af", audio_filter, "-map", "0:v:0", "-map", "1:a:0", "-shortest",
@@ -378,9 +378,9 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
         "video_id": video_id, "status": "rendered", "rendered_path": str(output_path.resolve()),
         "resolution": f"{VIDEO_WIDTH}x{VIDEO_HEIGHT}", "fps": VIDEO_FPS,
         "visual_style": "Pexels stock video montage when API key is configured; otherwise moving stills",
-        "voice_provider": "elevenlabs" if (os.getenv("ELEVENLABS_API_KEY") and os.getenv("ELEVENLABS_VOICE_ID")) else "edge-tts", "visual_assets": len(clip_files),
+        "voice_provider": "piper-local", "visual_assets": len(clip_files),
         "pexels_enabled": bool(PEXELS_API_KEY),
         "pixabay_enabled": bool(PIXABAY_API_KEY),
-        "captions": "character-aligned karaoke captions when ElevenLabs is configured; estimated timing in fallback mode",
+        "captions": "estimated word timing; Piper does not provide forced alignment",
         "attribution_file": str((work / "attributions.json").resolve()),
     }
