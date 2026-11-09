@@ -108,7 +108,9 @@ def score_video_candidate(query: str, description: str, width: int,
                                padding=True, truncation=True)
             with torch.inference_mode():
                 outputs = model(**inputs)
-                cosine = outputs.image_embeds @ outputs.text_embeds.T
+                image_embeds = torch.nn.functional.normalize(outputs.image_embeds, dim=-1)
+                text_embeds = torch.nn.functional.normalize(outputs.text_embeds, dim=-1)
+                cosine = image_embeds @ text_embeds.T
                 similarity = float(cosine.max().item())
             # CLIP cosine similarities for stock footage commonly occupy a
             # narrow range. Map to a bounded ranking score, not a probability.
