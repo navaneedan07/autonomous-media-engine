@@ -48,7 +48,7 @@ def _pexels_clip(query: str, destination: Path):
         return None
     try:
         response = httpx.get(
-            "https://api.pexels.com/videos/search",
+            "https://api.pexels.com/v1/videos/search",
             params={"query": query, "per_page": 8, "orientation": "portrait"},
             headers={"Authorization": PEXELS_API_KEY}, timeout=30,
         )
