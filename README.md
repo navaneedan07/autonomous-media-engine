@@ -147,3 +147,14 @@ ELEVENLABS_SPEED=1.06
 Get an API key and choose a voice in your ElevenLabs account: https://elevenlabs.io/app/settings/api-keys and https://elevenlabs.io/app/voice-library. The voice ID is available in the voice details. AME calls the official text-to-speech-with-timestamps endpoint, so it can save character timing for synchronized captions. API usage consumes credits; check your current plan and credit balance before rendering. If the ElevenLabs key or voice ID is absent, AME falls back to Edge TTS.
 
 ElevenLabs settings: lower stability adds variation; style exaggeration is supported by v2/v3 models; speaker boost improves clarity/similarity. These are starting values, not a guarantee of a particular performance. Preview a selected voice before committing credits.
+
+
+## Optional local word-level caption alignment
+
+For subtitles aligned to the actual spoken audio instead of estimated word timing, install the optional CPU speech recognizer:
+
+```powershell
+.\\scripts\\setup_alignment.ps1
+```
+
+AME uses faster-whisper with the `base.en` model, CPU and int8 compute. The first run downloads the model; subsequent alignment runs locally. On a 16 GB RAM machine this avoids requiring a dedicated GPU. If the optional package is not installed or alignment fails, rendering falls back to estimated timings and reports the method in its response.
