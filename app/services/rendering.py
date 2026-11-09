@@ -200,16 +200,29 @@ def render_approved_video(video_id: int) -> dict:
     # Repeat retrieved visuals if fewer images than planned scenes.
     while len(visual_paths) < 3:
         visual_paths.append(visual_paths[-1])
-    with open(work / "visuals.txt", "w", encoding="utf-8") as manifest:
-        seconds = max(2.5, float(row["duration_target_seconds"] or 45) / len(visual_paths))
-        for path in visual_paths:
-            safe = str(path.resolve()).replace("\\\\", "/").replace("'", "'\\''")
-            manifest.write(f"file '{safe}'\n")
-            manifest.write(f"duration {seconds:.3f}\n")
-        safe = str(visual_paths[-1].resolve()).replace("\\\\", "/").replace("'", "'\\''")
-            manifest.write(f"file '{safe}'\n")
-
     output_path = work / f"ame_video_{video_id}.mp4"
+    # Feed each full-frame image as a timed input and animate it with a slow zoom.
+    seconds = max(2.5, float(row["duration_target_seconds"] or 45) / len(visual_paths))
+    command = [FFMPEG_BIN, "-y"]
+    filters = []
+    concat_inputs = []
+    for index, path in enumerate(visual_paths):
+        command.extend(["-loop", "1", "-framerate", str(VIDEO_FPS), "-t", f"{seconds:.3f}", "-i", str(path)])
+        filters.append(
+            f"[{index}:v]scale={VIDEO_WIDTH}:{VIDEO_HEIGHT}:force_original_aspect_ratio=increase,"
+            f"crop={VIDEO_WIDTH}:{VIDEO_HEIGHT},zoompan=z='min(zoom+0.0008,1.10)':"
+            f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:"
+            f"s={VIDEO_WIDTH}x{VIDEO_HEIGHT}:fps={VIDEO_FPS},setsar=1,format=yuv420p[v{index}]"
+        )
+        concat_inputs.append(f"[v{index}]")
+    filters.append("".join(concat_inputs) + f"concat=n={len(visual_paths)}:v=1:a=0[vout]")
+    filter_complex = ";".join(filters)
+    command.extend(["-i", str(audio_path), "-filter_complex", filter_complex,
+                    "-map", "[vout]", "-map", f"{len(visual_paths)}:a:0",
+                    "-c:v", VIDEO_CODEC, "-preset", VIDEO_PRESET, "-crf", str(VIDEO_CRF),
+                    "-c:a", "aac", "-b:a", VIDEO_AUDIO_BITRATE, "-shortest",
+                    "-movflags", "+faststart", str(output_path)])
+
     # Continuous slow zoom gives still photographs motion rather than slide transitions.
     zoom = (f"zoompan=z='min(zoom+0.0009,1.12)':"
             f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
