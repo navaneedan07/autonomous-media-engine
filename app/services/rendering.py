@@ -16,7 +16,7 @@ from app.config import (
 )
 from app.db import get_db
 from app.services.tts import synthesize_speech
-from app.services.visual_matching import queries, relevance
+from app.services.visual_matching import queries
 
 import os
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "").strip()
@@ -45,66 +45,78 @@ def _font(size, bold=False):
 
 
 def _pexels_clip(query: str, destination: Path):
+    """Retrieve several candidates and rank actual frames when local CLIP is installed."""
     if not PEXELS_API_KEY:
         return None
     try:
         response = httpx.get(
             "https://api.pexels.com/videos/search",
-            params={"query": query, "per_page": 8, "orientation": "portrait"},
+            params={"query": query, "per_page": 12, "orientation": "portrait"},
             headers={"Authorization": PEXELS_API_KEY}, timeout=30,
         )
         response.raise_for_status()
-        videos = response.json().get("videos", [])
-        # Prefer vertical HD files; never download 4K for this local 16 GB machine.
         candidates = []
-        for video in videos:
+        for video in response.json().get("videos", []):
+            page = video.get("url", "")
+            description = " ".join([page.rsplit("/", 2)[-2], video.get("user", {}).get("name", "")])
             for item in video.get("video_files", []):
                 width, height = item.get("width") or 0, item.get("height") or 0
-                if item.get("link") and height >= width and width >= 720:
-                    candidates.append((width * height, item["link"], video.get("url", "")))
+                link = item.get("link")
+                if link and height >= width and width >= 720:
+                    candidates.append((description, width, height, link, page))
         if not candidates:
             return None
-        candidates.sort(key=lambda x: abs(x[0] - (1080 * 1920)))
-        _, url, page = candidates[0]
+        from app.services.visual_matching import score_video_candidate
+        ranked = []
+        for description, width, height, link, page in candidates[:8]:
+            score = score_video_candidate(query, description, width, height, link)
+            ranked.append((score, abs(width * height - 1080 * 1920), link, page))
+        ranked.sort(key=lambda x: (x[0], -x[1]), reverse=True)
+        score, _, url, page = ranked[0]
+        if score < float(os.getenv("MIN_VISUAL_RELEVANCE", "0.38")):
+            return None
         with httpx.stream("GET", url, timeout=90, follow_redirects=True) as stream:
             stream.raise_for_status()
             with destination.open("wb") as f:
                 for chunk in stream.iter_bytes(1024 * 1024):
                     f.write(chunk)
         if destination.exists() and destination.stat().st_size > 100_000:
-            return {"provider": "Pexels", "page": page, "license": "Pexels license; review terms before publication"}
+            return {"provider": "Pexels", "page": page, "relevance_score": round(score, 3),
+                    "license": "Pexels license; review terms before publication"}
     except Exception:
         destination.unlink(missing_ok=True)
     return None
 
 
-
 def _pixabay_clip(query: str, destination: Path):
-    """Search Pixabay's official video API and download one matching clip."""
+    """Search Pixabay and rank candidate metadata plus sampled visual frames."""
     if not PIXABAY_API_KEY:
         return None
     try:
         response = httpx.get(
             "https://pixabay.com/api/videos/",
-            params={"key": PIXABAY_API_KEY, "q": (queries(query, "") or [query])[0], "per_page": 20,
-                    "safesearch": "true", "min_width": 720},
+            params={"key": PIXABAY_API_KEY, "q": (queries(query, "") or [query])[0],
+                    "per_page": 20, "safesearch": "true", "min_width": 720},
             timeout=30,
         )
         response.raise_for_status()
-        hits = response.json().get("hits", [])
+        from app.services.visual_matching import score_video_candidate
         candidates = []
-        for hit in hits:
+        for hit in response.json().get("hits", []):
             for quality in ("large", "medium", "small", "tiny"):
                 item = (hit.get("videos") or {}).get(quality) or {}
                 url = item.get("url")
                 width, height = item.get("width") or 0, item.get("height") or 0
                 if url and width >= 720 and height >= 720:
-                    candidates.append((relevance(query, hit.get("tags", ""), width, height), width * height, url, hit.get("pageURL", ""), hit.get("tags", "")))
+                    tags = hit.get("tags", "")
+                    score = score_video_candidate(query, tags, width, height, url)
+                    candidates.append((score, abs(width * height - 1080 * 1920),
+                                       url, hit.get("pageURL", ""), tags))
         if not candidates:
             return None
-        candidates.sort(key=lambda item: (item[0], -abs(item[1] - 1080 * 1920)), reverse=True)
+        candidates.sort(key=lambda item: (item[0], -item[1]), reverse=True)
         score, _, url, page, tags = candidates[0]
-        if score < float(os.getenv("MIN_VISUAL_RELEVANCE", "0.22")):
+        if score < float(os.getenv("MIN_VISUAL_RELEVANCE", "0.38")):
             return None
         with httpx.stream("GET", url, timeout=90, follow_redirects=True) as stream:
             stream.raise_for_status()
@@ -112,7 +124,8 @@ def _pixabay_clip(query: str, destination: Path):
                 for chunk in stream.iter_bytes(1024 * 1024):
                     output.write(chunk)
         if destination.exists() and destination.stat().st_size > 100_000:
-            return {"provider": "Pixabay", "page": page, "tags": tags, "relevance_score": round(score, 3),
+            return {"provider": "Pixabay", "page": page, "tags": tags,
+                    "relevance_score": round(score, 3),
                     "license": "Pixabay Content License; review current terms"}
     except Exception:
         destination.unlink(missing_ok=True)
@@ -303,7 +316,7 @@ def render_approved_video(video_id: int) -> dict:
                     "-pix_fmt", "yuv420p", str(silent_video)])
     _run(command, "Crossfade video assembly")
 
-    # Character-level timestamps from ElevenLabs are grouped into readable 2-3 word captions.
+    # Local Whisper supplies word timestamps; otherwise use a conservative estimated fallback.
     alignment_path = audio_path.with_suffix(".alignment.json")
     ass_path = work / "captions.ass"
     words = []
