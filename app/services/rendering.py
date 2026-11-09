@@ -123,13 +123,13 @@ def render_approved_video(video_id: int) -> dict:
             frame = work / f"scene_{index:02d}.png"
             heading = scene.get("on_screen_text") or scene.get("visual") or f"Scene {index}"
             caption = scene.get("visual") or ""
-            _make_scene_card(frame, row["title"] or "Today's story", heading + "\\n" + caption, index, len(scenes))
+            _make_scene_card(frame, row["title"] or "Today's story", heading + "\n" + caption, index, len(scenes))
             safe_path = str(frame.resolve()).replace("\\", "/").replace("'", "'\\''")
-            manifest.write(f"file '{safe_path}'\\n")
-            manifest.write(f"duration {per_scene:.3f}\\n")
+            manifest.write(f"file '{safe_path}'\n")
+            manifest.write(f"duration {per_scene:.3f}\n")
         last = work / f"scene_{len(scenes):02d}.png"
         safe_last = str(last.resolve()).replace("\\", "/").replace("'", "'\\''")
-        manifest.write(f"file '{safe_last}'\\n")
+        manifest.write(f"file '{safe_last}'\n")
 
     output_path = work / f"ame_video_{video_id}.mp4"
     command = [FFMPEG_BIN, "-y", "-f", "concat", "-safe", "0", "-i", str(concat_path),
