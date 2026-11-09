@@ -70,14 +70,15 @@ def _clip_model():
     return _CLIP
 
 
-def _sample_frames(video_path: Path) -> list[Image.Image]:
+def _sample_frames(video_url: str, directory: Path) -> list[Image.Image]:
+    """Sample three frames directly from a provider URL; do not download full clips."""
     frames = []
     for index, seconds in enumerate((1.0, 3.0, 5.0)):
-        target = video_path.parent / f"ame_frame_{index}.jpg"
+        target = directory / f"ame_frame_{index}.jpg"
         result = subprocess.run(
             [os.getenv("FFMPEG_BIN", "ffmpeg"), "-y", "-ss", str(seconds),
-             "-i", str(video_path), "-frames:v", "1", "-vf", "scale=384:-1",
-             str(target)], capture_output=True, text=True, timeout=30)
+             "-i", video_url, "-frames:v", "1", "-vf", "scale=384:-1",
+             str(target)], capture_output=True, text=True, timeout=35)
         if result.returncode == 0 and target.exists():
             try:
                 with Image.open(target) as image:
@@ -99,15 +100,7 @@ def score_video_candidate(query: str, description: str, width: int,
         return metadata_score
     try:
         with tempfile.TemporaryDirectory(prefix="ame_clip_") as directory:
-            video_path = Path(directory) / "candidate.mp4"
-            with httpx.stream("GET", url, timeout=45, follow_redirects=True) as response:
-                response.raise_for_status()
-                with video_path.open("wb") as output:
-                    for chunk in response.iter_bytes(512 * 1024):
-                        output.write(chunk)
-            if video_path.stat().st_size < 50_000:
-                return metadata_score
-            frames = _sample_frames(video_path)
+            frames = _sample_frames(url, Path(directory))
             if not frames:
                 return metadata_score
             processor, model, torch = _clip_model()
