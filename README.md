@@ -8,7 +8,7 @@ Local-first AI-assisted YouTube Shorts / Instagram Reels creator for Windows.
 - Fully local Piper neural English narration (no API key; CPU inference)
 
 - **Real vertical stock-video clips from Pexels or Pixabay** when a provider API key is configured
-- Fallback: Wikimedia Commons / publisher still images animated with a slow camera move
+- Strict visual matching: render stops when any scene lacks a unique stock-video match; it will not silently substitute unrelated stills
 - FFmpeg clip normalization, crossfade transitions, sentence-timed captions (Piper does not provide word-level alignment), and loudness mastering
 - 1080 × 1920, 30 FPS MP4 output
 
@@ -59,7 +59,7 @@ PEXELS_API_KEY=your_key_here
 
 The key stays on your computer and must not be committed to GitHub. Pexels API access is subject to Pexels' current rate limits and license terms. The renderer records source pages in `attributions.json`.
 
-If neither key is configured, AME falls back to still images. The render response reports `pexels_enabled` and `pixabay_enabled`.
+At least one provider key is required for rendering. If a relevant unique clip cannot be found for every scene, rendering stops and reports the unmatched scenes instead of substituting unrelated footage.
 
 ## Windows setup
 
@@ -91,7 +91,7 @@ Set local `.env` values:
 OLLAMA_MODEL=gemma3:4b
 CONTENT_LANGUAGE=english
 PIPER_MODEL_PATH=./models/voices/en_US-ryan-high.onnx
-PIPER_LENGTH_SCALE=0.94
+PIPER_LENGTH_SCALE=1.16
 PIPER_NOISE_SCALE=0.72
 PIPER_NOISE_W_SCALE=0.78
 PEXELS_API_KEY=
@@ -124,8 +124,8 @@ A previously rendered video must be approved again before re-rendering.
 
 ## Important limitations
 - Real stock footage requires a Pexels API key and internet access. Matching clips are not guaranteed for every scene.
-- The fallback uses still images; it does not fabricate them as video footage.
-- ElevenLabs character timestamps are grouped into compact 2–3 word karaoke captions. Edge TTS fallback uses estimated word timing.
+- Rendering deliberately fails closed rather than using unrelated images as a substitute for missing footage.
+- ASS subtitles are generated with valid line breaks and burned into the final MP4. Optional faster-whisper provides word-level timing; without it, timing is estimated and should be checked.
 - Review script facts, clip relevance, source pages and license terms before publishing.
 - No automatic YouTube/Instagram publishing is implemented.
 
@@ -146,7 +146,7 @@ ELEVENLABS_SPEED=1.06
 
 Get an API key and choose a voice in your ElevenLabs account: https://elevenlabs.io/app/settings/api-keys and https://elevenlabs.io/app/voice-library. The voice ID is available in the voice details. AME calls the official text-to-speech-with-timestamps endpoint, so it can save character timing for synchronized captions. API usage consumes credits; check your current plan and credit balance before rendering. If the ElevenLabs key or voice ID is absent, AME falls back to Edge TTS.
 
-ElevenLabs settings: lower stability adds variation; style exaggeration is supported by v2/v3 models; speaker boost improves clarity/similarity. These are starting values, not a guarantee of a particular performance. Preview a selected voice before committing credits.
+The local Piper voice is the default. Cloud TTS is not required.
 
 
 ## Optional local word-level caption alignment
