@@ -1,8 +1,8 @@
 """Render approved scripts into vertical Shorts using real stock video clips.
 
-Pexels is the preferred video source (free API key required). Wikimedia/article
-images remain a clearly identified fallback. FFmpeg handles clip cuts, motion,
-voice-over, captions, and final encoding.
+Pexels and Pixabay stock footage are searched per scene. Rendering fails closed
+when a unique relevant clip cannot be found. FFmpeg handles voice-over, captions,
+and final encoding.
 """
 import json
 import re
@@ -16,7 +16,6 @@ from app.config import (
 )
 from app.db import get_db
 from app.services.tts import synthesize_speech
-from app.services.visual_matching import queries, relevance
 from app.services.visual_matching import queries, relevance
 
 import os
@@ -266,28 +265,36 @@ def render_approved_video(video_id: int) -> dict:
     if len(clip_files) < 3:
         raise RuntimeError("Render stopped: fewer than 3 unique relevant video clips were found.")
 
-    # Normalize all downloaded clips to identical portrait format, then concatenate.
+    # Match the visual timeline to the synthesized narration instead of letting
+    # -shortest silently truncate the voice-over.
+    probe = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                            "-of", "default=noprint_wrappers=1:nokey=1", str(audio_path)],
+                           capture_output=True, text=True, check=True)
+    audio_duration = float(probe.stdout.strip())
+    transition = 0.25
+    shot_duration = (audio_duration + (len(clip_files) - 1) * transition) / len(clip_files)
+
+    # Normalize all downloaded clips to identical portrait format.
     normalized = []
     for index, source in enumerate(clip_files, 1):
         target = work / f"normalized_{index:02d}.mp4"
         _run([FFMPEG_BIN, "-y", "-i", str(source), "-vf",
               f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT}:force_original_aspect_ratio=increase,"
               f"crop={VIDEO_WIDTH}:{VIDEO_HEIGHT},fps={VIDEO_FPS},setsar=1,format=yuv420p",
-              "-an", "-t", "5.5", "-c:v", VIDEO_CODEC, "-preset", VIDEO_PRESET,
+              "-an", "-t", f"{shot_duration:.3f}", "-c:v", VIDEO_CODEC, "-preset", VIDEO_PRESET,
               "-crf", str(VIDEO_CRF), "-pix_fmt", "yuv420p", str(target)], "Clip normalization")
         normalized.append(target)
 
-    # Smooth crossfades replace abrupt hard cuts. Each normalized shot is six seconds.
+    # Smooth crossfades replace abrupt hard cuts.
     silent_video = work / "visual_track.mp4"
     command = [FFMPEG_BIN, "-y"]
     for clip in normalized:
         command.extend(["-i", str(clip)])
-    transition = 0.25
     filters = []
     previous = "[0:v]"
     for index in range(1, len(normalized)):
         out = f"[xf{index}]"
-        offset = index * (5.5 - transition)
+        offset = index * (shot_duration - transition)
         filters.append(f"{previous}[{index}:v]xfade=transition=fade:duration={transition}:offset={offset:.3f}{out}")
         previous = out
     filters.append(f"{previous}format=yuv420p[vout]")
@@ -318,7 +325,7 @@ def render_approved_video(video_id: int) -> dict:
                 token_end = finish
         if token:
             words.append((token, float(token_start), float(token_end)))
-    alignment_method = "ElevenLabs timestamps" if words else "estimated fallback"
+    alignment_method = "local word alignment" if words else "estimated fallback"
     if not words:
         # Optional local forced alignment via faster-whisper. CPU int8 is suitable
         # for this 16 GB RAM / integrated-graphics target.
@@ -393,7 +400,7 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
     return {
         "video_id": video_id, "status": "rendered", "rendered_path": str(output_path.resolve()),
         "resolution": f"{VIDEO_WIDTH}x{VIDEO_HEIGHT}", "fps": VIDEO_FPS,
-        "visual_style": "Pexels stock video montage when API key is configured; otherwise moving stills",
+        "visual_style": "Unique per-scene stock video; render fails if visual matches are unavailable",
         "voice_provider": "piper-local", "visual_assets": len(clip_files),
         "unique_visual_sources": len(set(a.get("page") for a in attributions if a.get("page"))),
         "pexels_enabled": bool(PEXELS_API_KEY),
