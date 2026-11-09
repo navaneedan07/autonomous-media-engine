@@ -6,10 +6,26 @@ Local-first AI-assisted YouTube Shorts / Instagram Reels creator for Windows.
 - RSS topic discovery and local Ollama script drafting (Gemma 3 4B)
 - English-first 30–45 second scripts with manual approval
 - Expressive neural English narration using Edge TTS (internet required, no paid API key)
-- **Real vertical stock-video clips from Pexels** when `PEXELS_API_KEY` is configured
+- **Real vertical stock-video clips from Pexels or Pixabay** when a provider API key is configured
 - Fallback: Wikimedia Commons / publisher still images animated with a slow camera move
 - FFmpeg clip normalization, montage, and burned-in sentence captions
 - 1080 × 1920, 30 FPS MP4 output
+
+## Stock video API setup
+
+Pexels has temporarily paused new API-key issuance. Use Pixabay as the alternative:
+
+1. Create/sign in to a Pixabay account: https://pixabay.com/accounts/register/
+2. Open the API documentation/account page: https://pixabay.com/api/docs/
+3. Copy your API key into your local `.env`:
+
+```env
+PIXABAY_API_KEY=your_key_here
+```
+
+Pixabay asks API users to cache results for 24 hours, avoid mass automated queries, and credit the source when displaying results. AME searches per scene and downloads selected video files locally. Review Pixabay's current Content License before publishing.
+
+### Pexels (optional)
 
 ## Get the free Pexels API key
 
@@ -23,7 +39,7 @@ PEXELS_API_KEY=your_key_here
 
 The key stays on your computer and must not be committed to GitHub. Pexels API access is subject to Pexels' current rate limits and license terms. The renderer records source pages in `attributions.json`.
 
-Without a key, AME falls back to still images. It will report `pexels_enabled=false` in the render response.
+If neither key is configured, AME falls back to still images. The render response reports `pexels_enabled` and `pixabay_enabled`.
 
 ## Windows setup
 
