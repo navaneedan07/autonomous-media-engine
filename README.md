@@ -1,20 +1,33 @@
 # Autonomous Media Engine (AME)
 
-Local-first AI-assisted short-form content engine for Windows.
+Local-first AI-assisted YouTube Shorts / Instagram Reels creator for Windows.
 
-## Current capabilities
+## Current pipeline
 - RSS topic discovery and local Ollama script drafting (Gemma 3 4B)
-- English-first 30–45 second scripts and human approval
-- Expressive neural English narration using Edge TTS (free endpoint, internet required, no API key)
-- Article lead-image extraction and Wikimedia Commons image search
-- Full-frame image montage with slow zoom/pan and restrained lower-third captions
-- FFmpeg MP4 export at 1080 × 1920, 30 FPS
+- English-first 30–45 second scripts with manual approval
+- Expressive neural English narration using Edge TTS (internet required, no paid API key)
+- **Real vertical stock-video clips from Pexels** when `PEXELS_API_KEY` is configured
+- Fallback: Wikimedia Commons / publisher still images animated with a slow camera move
+- FFmpeg clip normalization, montage, and burned-in sentence captions
+- 1080 × 1920, 30 FPS MP4 output
 
-**Visual limitation:** this build uses photographs/images, not generated cinematic video clips. It animates them with camera movement to avoid the previous PowerPoint-style text cards. Wikimedia Commons attribution/license metadata is saved to `attributions.json`; publisher images may have reuse restrictions. Check rights before publishing. No social auto-publishing is implemented.
+## Get the free Pexels API key
+
+1. Create/sign in to a Pexels account: https://www.pexels.com/
+2. Request an API key: https://www.pexels.com/api/
+3. Put the key in your local `.env`:
+
+```env
+PEXELS_API_KEY=your_key_here
+```
+
+The key stays on your computer and must not be committed to GitHub. Pexels API access is subject to Pexels' current rate limits and license terms. The renderer records source pages in `attributions.json`.
+
+Without a key, AME falls back to still images. It will report `pexels_enabled=false` in the render response.
 
 ## Windows setup
 
-Requirements: Windows 10/11, Python 3.11+, Ollama, FFmpeg on PATH, and internet access for neural TTS and image retrieval.
+Requirements: Windows 10/11, Python 3.11+, Ollama, FFmpeg on PATH, internet access.
 
 ```powershell
 py -3.11 -m venv .venv
@@ -23,57 +36,59 @@ pip install -r requirements.txt
 Copy-Item .env.example .env
 ```
 
-Install Ollama and download the model:
+Install Ollama and pull the model:
 
 ```powershell
 ollama pull gemma3:4b
 ollama serve
 ```
 
-Ensure `ffmpeg -version` works in PowerShell.
+Install FFmpeg. The build should include the `subtitles` filter (libass); verify with:
 
-Defaults in `.env`:
-- `OLLAMA_MODEL=gemma3:4b`
-- `CONTENT_LANGUAGE=english`
-- `AME_TTS_VOICE=en-US-ChristopherNeural`
-- `AME_TTS_RATE=+8%`
-- `AME_TTS_PITCH=+2Hz`
-- `VIDEO_WIDTH=1080`, `VIDEO_HEIGHT=1920`, `VIDEO_FPS=30`
+```powershell
+ffmpeg -filters | findstr subtitles
+```
 
-Optional voice tuning: `AME_TTS_VOICE`, `AME_TTS_RATE`, `AME_TTS_PITCH`, `AME_TTS_VOLUME`. Voice availability and delivery vary; preview before publishing.
+Set local `.env` values:
 
-Start the API:
+```env
+OLLAMA_MODEL=gemma3:4b
+CONTENT_LANGUAGE=english
+AME_TTS_VOICE=en-US-ChristopherNeural
+AME_TTS_RATE=+8%
+AME_TTS_PITCH=+2Hz
+AME_TTS_VOLUME=+0%
+PEXELS_API_KEY=
+VIDEO_WIDTH=1080
+VIDEO_HEIGHT=1920
+VIDEO_FPS=30
+```
+
+Start API:
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
 uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-API docs: http://127.0.0.1:8000/docs
+Docs: http://127.0.0.1:8000/docs
 
 ## Workflow
 
-1. `POST /research/discover`
-2. `GET /topics`
-3. `POST /videos/generate/{topic_id}`
-4. Review `GET /videos/{video_id}`
+1. Discover: `POST /research/discover`
+2. List topics: `GET /topics`
+3. Generate: `POST /videos/generate/{topic_id}`
+4. Review: `GET /videos/{video_id}`
 5. Approve: `POST /videos/{video_id}/approve`
 6. Render: `POST /videos/{video_id}/render`
 
-Output is written under `output/video_{id}/`, including narration audio, downloaded assets, rendered MP4, and `attributions.json`.
+Output: `output/video_{id}/` including source clips, narration, captions, final MP4 and `attributions.json`.
 
-Example:
+A previously rendered video must be approved again before re-rendering.
 
-```powershell
-Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/videos/1/render" |
-    ConvertTo-Json -Depth 5
-```
-
-Existing `.env` values override defaults. Set `CONTENT_LANGUAGE=english` manually if your local file still says bilingual.
-
-## Limitations
-- Wikimedia and article images are still images, not stock video footage or AI-generated footage.
-- The Edge TTS endpoint is online, not fully local; no paid API key is required, but internet access is.
-- RSS scoring is heuristic, not validated market research.
-- Review claims, source URLs, and media licenses before publishing.
+## Important limitations
+- Real stock footage requires a Pexels API key and internet access. Matching clips are not guaranteed for every scene.
+- The fallback uses still images; it does not fabricate them as video footage.
+- Captions are sentence-timed approximations across the voice track, not phoneme-perfect word-level karaoke captions.
+- Review script facts, clip relevance, source pages and license terms before publishing.
 - No automatic YouTube/Instagram publishing is implemented.
