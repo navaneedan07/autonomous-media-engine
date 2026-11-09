@@ -1,0 +1,143 @@
+{
+  "name": "AME - Daily Research and Draft",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "id": "schedule",
+      "name": "Daily 08:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        200,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:8000/research/discover",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "discover",
+      "name": "Discover RSS Topics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        420,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://127.0.0.1:8000/topics?limit=1",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "top",
+      "name": "Get Top Topic",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        640,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows=$input.first().json; const items=Array.isArray(rows)?rows:(rows.body||[]); if(!items.length) throw new Error('No topics found'); return [{json:{topic_id:items[0].id,title:items[0].title}}];"
+      },
+      "id": "select",
+      "name": "Select Top Topic",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        860,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'http://127.0.0.1:8000/videos/generate/' + $json.topic_id }}",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "draft",
+      "name": "Generate Bilingual Draft",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1080,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Daily 08:00": {
+      "main": [
+        [
+          {
+            "node": "Discover RSS Topics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Discover RSS Topics": {
+      "main": [
+        [
+          {
+            "node": "Get Top Topic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Top Topic": {
+      "main": [
+        [
+          {
+            "node": "Select Top Topic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select Top Topic": {
+      "main": [
+        [
+          {
+            "node": "Generate Bilingual Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}
