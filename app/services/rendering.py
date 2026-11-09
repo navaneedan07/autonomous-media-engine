@@ -17,7 +17,9 @@ from app.config import (
 from app.db import get_db
 from app.services.tts import synthesize_speech
 
-PEXELS_API_KEY = __import__("os").getenv("PEXELS_API_KEY", "").strip()
+import os
+PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "").strip()
+PIXABAY_API_KEY = os.getenv("PIXABAY_API_KEY", "").strip()
 
 
 def export_profile():
@@ -70,6 +72,45 @@ def _pexels_clip(query: str, destination: Path):
                     f.write(chunk)
         if destination.exists() and destination.stat().st_size > 100_000:
             return {"provider": "Pexels", "page": page, "license": "Pexels license; review terms before publication"}
+    except Exception:
+        destination.unlink(missing_ok=True)
+    return None
+
+
+
+def _pixabay_clip(query: str, destination: Path):
+    """Search Pixabay's official video API and download one matching clip."""
+    if not PIXABAY_API_KEY:
+        return None
+    try:
+        response = httpx.get(
+            "https://pixabay.com/api/videos/",
+            params={"key": PIXABAY_API_KEY, "q": query, "per_page": 8,
+                    "safesearch": "true", "min_width": 720},
+            timeout=30,
+        )
+        response.raise_for_status()
+        hits = response.json().get("hits", [])
+        candidates = []
+        for hit in hits:
+            for quality in ("large", "medium", "small", "tiny"):
+                item = (hit.get("videos") or {}).get(quality) or {}
+                url = item.get("url")
+                width, height = item.get("width") or 0, item.get("height") or 0
+                if url and width >= 720 and height >= 720:
+                    candidates.append((width * height, url, hit.get("pageURL", ""), hit.get("tags", "")))
+        if not candidates:
+            return None
+        candidates.sort(key=lambda item: abs(item[0] - 1080 * 1920))
+        _, url, page, tags = candidates[0]
+        with httpx.stream("GET", url, timeout=90, follow_redirects=True) as stream:
+            stream.raise_for_status()
+            with destination.open("wb") as output:
+                for chunk in stream.iter_bytes(1024 * 1024):
+                    output.write(chunk)
+        if destination.exists() and destination.stat().st_size > 100_000:
+            return {"provider": "Pixabay", "page": page, "tags": tags,
+                    "license": "Pixabay Content License; review current terms"}
     except Exception:
         destination.unlink(missing_ok=True)
     return None
@@ -194,6 +235,8 @@ def render_approved_video(video_id: int) -> dict:
         caption = " ".join(str(scene.get("on_screen_text") or "").split()[:7])
         clip_path = work / f"clip_{index:02d}.mp4"
         attribution = _pexels_clip(visual_query, clip_path)
+        if not attribution:
+            attribution = _pixabay_clip(visual_query, clip_path)
         if attribution:
             clip_files.append(clip_path)
             attribution["query"] = visual_query
@@ -286,6 +329,7 @@ def render_approved_video(video_id: int) -> dict:
         "visual_style": "Pexels stock video montage when API key is configured; otherwise moving stills",
         "voice": "expressive neural English voice", "visual_assets": len(clip_files),
         "pexels_enabled": bool(PEXELS_API_KEY),
+        "pixabay_enabled": bool(PIXABAY_API_KEY),
         "captions": "sentence-timed burned-in subtitles",
         "attribution_file": str((work / "attributions.json").resolve()),
     }
